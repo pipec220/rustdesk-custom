@@ -39,17 +39,18 @@ jobs:
           Write-Host "Cargo.toml found, using existing files"
         }
     
-    - name: Kill AOM with fire
+    - name: NUKE AOM FROM ORBIT
       shell: pwsh
       continue-on-error: true
       run: |
-        Write-Host "🔪 KILLING AOM 🔪"
+        Write-Host "💥 NUKE AOM FROM ORBIT 💥"
         
-        # Удаляем всё, что связано с aom
-        $pathsToKill = @(
+        # Удаляем все возможные места, где может прятаться aom
+        $nukePaths = @(
           "res/vcpkg/aom",
           "ports/aom",
           "vcpkg/ports/aom",
+          ".vcpkg/ports/aom",
           "vcpkg_installed/x64-windows/share/aom",
           "vcpkg_installed/x64-windows/include/aom",
           "vcpkg_installed/x64-windows/lib/aom*",
@@ -57,19 +58,25 @@ jobs:
           "vcpkg_installed/x64-windows/debug/share/aom"
         )
         
-        foreach ($path in $pathsToKill) {
+        foreach ($path in $nukePaths) {
           if (Test-Path $path) {
             Remove-Item -Path $path -Recurse -Force
-            Write-Host "✅ Removed: $path"
+            Write-Host "✅ Nuked: $path"
           }
         }
         
+        # Создаём пустой файл-заглушку, чтобы порт не мог быть создан заново
+        $blockPath = "res/vcpkg/aom"
+        New-Item -ItemType File -Path $blockPath -Force | Out-Null
+        Write-Host "✅ Created blocker file at $blockPath"
+        
         # Чистим vcpkg.json
-        if (Test-Path "vcpkg.json") {
-          $content = Get-Content "vcpkg.json" -Raw
+        $vcpkgJson = "vcpkg.json"
+        if (Test-Path $vcpkgJson) {
+          $content = Get-Content $vcpkgJson -Raw
           $content = $content -replace '"aom",?\s*', ''
           $content = $content -replace ',\s*\}', '}'
-          $content | Set-Content "vcpkg.json" -Encoding UTF8
+          $content | Set-Content $vcpkgJson -Encoding UTF8
           Write-Host "✅ Removed aom from vcpkg.json"
         }
         
