@@ -69,7 +69,7 @@ jobs:
     
     - name: Install vcpkg dependencies
       run: |
-        C:\vcpkg\vcpkg install libvpx:x64-windows-static libyuv:x64-windows-static opus:x64-windows-static
+        C:\vcpkg\vcpkg install
     
     - name: Build
       run: cargo build --release
