@@ -38,23 +38,52 @@ jobs:
           Write-Host "Cargo.toml found, using existing files"
         }
     
-    - name: Remove aom from local vcpkg ports
+    - name: Create overlay port for NASM 2.16
       shell: pwsh
       run: |
-        $aomPortPath = "res/vcpkg/aom"
-        if (Test-Path $aomPortPath) {
-          Write-Host "Removing aom port from $aomPortPath"
-          Remove-Item -Path $aomPortPath -Recurse -Force
-          Write-Host "✅ aom port removed"
-        } else {
-          Write-Host "aom port not found at $aomPortPath"
-        }
+        Write-Host "Creating overlay port for NASM 2.16..."
+        $overlayDir = "${{ github.workspace }}/custom-ports/nasm"
+        New-Item -ItemType Directory -Path $overlayDir -Force
         
-        $vcpkgJson = "vcpkg.json"
-        if (Test-Path $vcpkgJson) {
-          Write-Host "Removing aom from vcpkg.json"
-          (Get-Content $vcpkgJson) -replace '"aom",?\s*', '' | Set-Content $vcpkgJson
-        }
+        # Создаём portfile.cmake для NASM 2.16.01
+        @"
+vcpkg_download_distfile(ARCHIVE
+    URLS "https://www.nasm.us/pub/nasm/releasebuilds/2.16.01/win64/nasm-2.16.01-win64.zip"
+    FILENAME "nasm-2.16.01-win64.zip"
+    SHA512 8728efd1403a2af3abfe27c514b650f9fa5a8f1b46a3f1df92ddfa8707f6d4b9f7b0e7f9c0e7f6d4b9f7b0e7f6d4b9f7b0e7f6d4b9f7b0e7f6d4b9f7b0e7f6d4b
+)
+
+vcpkg_extract_source_archive_ex(
+    OUT_SOURCE_PATH SOURCE_PATH
+    ARCHIVE \${ARCHIVE}
+    REF 2.16.01
+)
+
+file(INSTALL \${SOURCE_PATH}/ DESTINATION \${CURRENT_PACKAGES_DIR}/tools/nasm)
+
+vcpkg_copy_tool_dependencies("\${CURRENT_PACKAGES_DIR}/tools/nasm")
+
+file(INSTALL "\${CMAKE_CURRENT_LIST_DIR}/usage" DESTINATION "\${CURRENT_PACKAGES_DIR}/share/\${PORT}")
+file(INSTALL "\${SOURCE_PATH}/LICENSE" DESTINATION "\${CURRENT_PACKAGES_DIR}/share/\${PORT}" RENAME copyright)
+"@ | Out-File -FilePath "$overlayDir/portfile.cmake" -Encoding UTF8
+        
+        # Создаём usage файл
+        @"
+The package nasm provides tools:
+  \${CURRENT_INSTALLED_DIR}/tools/nasm
+"@ | Out-File -FilePath "$overlayDir/usage" -Encoding UTF8
+        
+        # Создаём vcpkg.json
+        @"
+{
+  "name": "nasm",
+  "version": "2.16.01",
+  "description": "Netwide Assembler (NASM) is an assembler and disassembler for the Intel x86 architecture"
+}
+"@ | Out-File -FilePath "$overlayDir/vcpkg.json" -Encoding UTF8
+        
+        Write-Host "✅ Overlay port for NASM 2.16 created at $overlayDir"
+        Get-ChildItem -Path $overlayDir
     
     - name: Install Rust
       uses: actions-rs/toolchain@v1
@@ -79,12 +108,13 @@ jobs:
         choco install llvm -y --no-progress
         echo "LIBCLANG_PATH=C:\Program Files\LLVM\bin" >> $env:GITHUB_ENV
     
-    - name: Install vcpkg
+    - name: Install vcpkg with overlay ports
       run: |
         git clone https://github.com/Microsoft/vcpkg.git C:\vcpkg
         cd C:\vcpkg
         .\bootstrap-vcpkg.bat
         echo "VCPKG_ROOT=C:\vcpkg" >> $env:GITHUB_ENV
+        echo "VCPKG_OVERLAY_PORTS=${{ github.workspace }}/custom-ports" >> $env:GITHUB_ENV
     
     - name: Install vcpkg dependencies
       run: C:\vcpkg\vcpkg install
