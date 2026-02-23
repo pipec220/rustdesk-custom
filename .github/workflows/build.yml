@@ -38,23 +38,37 @@ jobs:
           Write-Host "Cargo.toml found, using existing files"
         }
     
-    - name: Remove aom port completely
+    - name: Remove and block aom port
       shell: pwsh
       run: |
-        Write-Host "Removing aom port from res/vcpkg/aom..."
+        Write-Host "=== Removing aom port ==="
+        
         $aomPortPath = "res/vcpkg/aom"
         if (Test-Path $aomPortPath) {
           Remove-Item -Path $aomPortPath -Recurse -Force
-          Write-Host "✅ aom port removed"
+          Write-Host "✅ Removed $aomPortPath"
         } else {
-          Write-Host "aom port not found"
+          Write-Host "ℹ️ $aomPortPath not found"
         }
         
-        Write-Host "Removing aom from vcpkg.json..."
+        $altPaths = @("ports/aom", "vcpkg/ports/aom")
+        foreach ($path in $altPaths) {
+          if (Test-Path $path) {
+            Remove-Item -Path $path -Recurse -Force
+            Write-Host "✅ Removed $path"
+          }
+        }
+        
+        New-Item -ItemType File -Path "res/vcpkg/aom" -Force | Out-Null
+        Write-Host "✅ Created empty file to block aom"
+        
         $vcpkgJson = "vcpkg.json"
         if (Test-Path $vcpkgJson) {
-          (Get-Content $vcpkgJson) -replace '"aom",?\s*', '' | Set-Content $vcpkgJson
-          Write-Host "✅ aom removed from vcpkg.json"
+          $content = Get-Content $vcpkgJson -Raw
+          $content = $content -replace '"aom",?\s*', ''
+          $content = $content -replace ',\s*}', '}'
+          $content | Set-Content $vcpkgJson -Encoding UTF8
+          Write-Host "✅ Removed aom from vcpkg.json"
         }
     
     - name: Install Rust
