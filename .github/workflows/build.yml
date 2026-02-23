@@ -39,52 +39,17 @@ jobs:
           Write-Host "Cargo.toml found, using existing files"
         }
     
-    - name: NUKE AOM FROM ORBIT
-      shell: pwsh
-      continue-on-error: true
-      run: |
-        Write-Host "💥 NUKE AOM FROM ORBIT 💥"
-        
-        # Удаляем все возможные места, где может прятаться aom
-        $nukePaths = @(
-          "res/vcpkg/aom",
-          "ports/aom",
-          "vcpkg/ports/aom",
-          ".vcpkg/ports/aom",
-          "vcpkg_installed/x64-windows/share/aom",
-          "vcpkg_installed/x64-windows/include/aom",
-          "vcpkg_installed/x64-windows/lib/aom*",
-          "vcpkg_installed/x64-windows/debug/lib/aom*",
-          "vcpkg_installed/x64-windows/debug/share/aom"
-        )
-        
-        foreach ($path in $nukePaths) {
-          if (Test-Path $path) {
-            Remove-Item -Path $path -Recurse -Force
-            Write-Host "✅ Nuked: $path"
-          }
-        }
-        
-        # Создаём пустой файл-заглушку, чтобы порт не мог быть создан заново
-        $blockPath = "res/vcpkg/aom"
-        New-Item -ItemType File -Path $blockPath -Force | Out-Null
-        Write-Host "✅ Created blocker file at $blockPath"
-        
-        # Чистим vcpkg.json
-        $vcpkgJson = "vcpkg.json"
-        if (Test-Path $vcpkgJson) {
-          $content = Get-Content $vcpkgJson -Raw
-          $content = $content -replace '"aom",?\s*', ''
-          $content = $content -replace ',\s*\}', '}'
-          $content | Set-Content $vcpkgJson -Encoding UTF8
-          Write-Host "✅ Removed aom from vcpkg.json"
-        }
-        
-        # Удаляем кэш vcpkg
-        if (Test-Path "vcpkg_installed") {
-          Remove-Item -Path "vcpkg_installed" -Recurse -Force
-          Write-Host "✅ Removed vcpkg_installed cache"
-        }
+    - name: Cache vcpkg assets
+      uses: actions/cache@v3
+      with:
+        path: |
+          C:\vcpkg\downloads
+          C:\vcpkg\buildtrees
+          C:\vcpkg\packages
+          C:\vcpkg\installed
+        key: ${{ runner.os }}-vcpkg-${{ hashFiles('**/vcpkg.json') }}
+        restore-keys: |
+          ${{ runner.os }}-vcpkg-
     
     - name: Install Rust
       uses: actions-rs/toolchain@v1
@@ -115,18 +80,39 @@ jobs:
     - name: Install vcpkg
       continue-on-error: true
       run: |
-        git clone https://github.com/Microsoft/vcpkg.git C:\vcpkg
-        cd C:\vcpkg
-        .\bootstrap-vcpkg.bat
+        if (-not (Test-Path "C:\vcpkg")) {
+          git clone https://github.com/Microsoft/vcpkg.git C:\vcpkg
+          cd C:\vcpkg
+          .\bootstrap-vcpkg.bat
+        } else {
+          Write-Host "vcpkg already exists, updating..."
+          cd C:\vcpkg
+          git pull
+        }
         echo "VCPKG_ROOT=C:\vcpkg" >> $env:GITHUB_ENV
     
-    - name: Install vcpkg dependencies (with error forgiveness)
+    - name: Install vcpkg dependencies (with offline mode)
       continue-on-error: true
-      run: C:\vcpkg\vcpkg install --keep-going --allow-unsupported
+      shell: pwsh
+      run: |
+        Write-Host "📦 Installing vcpkg dependencies with offline mode..."
+        
+        # Первая попытка: офлайн-режим (использует кэш)
+        Write-Host "Attempting offline install..."
+        C:\vcpkg\vcpkg install --keep-going --no-downloads
+        
+        if ($LASTEXITCODE -ne 0) {
+          Write-Host "⚠️ Offline install failed, falling back to online install..."
+          # Если не получилось офлайн, пробуем онлайн
+          C:\vcpkg\vcpkg install --keep-going
+        } else {
+          Write-Host "✅ Offline install successful!"
+        }
       env:
         VCPKG_ROOT: C:\vcpkg
+        VCPKG_DOWNLOADS: C:\vcpkg\downloads
     
-    - name: Build RustDesk (with error forgiveness)
+    - name: Build RustDesk
       continue-on-error: true
       run: cargo build --release --keep-going
       env:
@@ -147,4 +133,16 @@ jobs:
         Write-Host "=========================================" -ForegroundColor Cyan
         Write-Host "🏁 WORKFLOW COMPLETED" -ForegroundColor Cyan
         Write-Host "=========================================" -ForegroundColor Cyan
-        Write-Host "Check artifacts above if any were created."
+        Write-Host ""
+        
+        if (Test-Path "target/release/rustdesk.exe") {
+          Write-Host "✅✅✅ ARTIFACT CREATED SUCCESSFULLY! ✅✅✅" -ForegroundColor Green
+          $fileInfo = Get-Item "target/release/rustdesk.exe"
+          Write-Host "📊 Size: $([math]::Round($fileInfo.Length/1MB, 2)) MB" -ForegroundColor Cyan
+        } else {
+          Write-Host "❌❌❌ ARTIFACT NOT FOUND ❌❌❌" -ForegroundColor Red
+          Write-Host "Build might have failed, check logs above." -ForegroundColor Yellow
+        }
+        
+        Write-Host ""
+        Write-Host "=========================================" -ForegroundColor Cyan
