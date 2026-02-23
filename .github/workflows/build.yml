@@ -22,11 +22,19 @@ jobs:
         submodules: 'recursive'
     
     - name: Clone RustDesk if needed
+      shell: pwsh
       run: |
         if (-not (Test-Path "Cargo.toml")) {
-          Write-Host "Cargo.toml not found, cloning RustDesk..."
-          Remove-Item -Path . -Recurse -Force -ErrorAction SilentlyContinue
-          git clone --recursive https://github.com/rustdesk/rustdesk.git .
+          Write-Host "Cargo.toml not found, cloning RustDesk to temp folder..."
+          $tempDir = Join-Path $env:RUNNER_TEMP "rustdesk-src"
+          Remove-Item -Path $tempDir -Recurse -Force -ErrorAction SilentlyContinue
+          
+          git clone --recursive https://github.com/rustdesk/rustdesk.git $tempDir
+          
+          # Копируем всё в текущую папку (кроме .git)
+          Copy-Item -Path "$tempDir\*" -Destination . -Recurse -Force
+          
+          Write-Host "RustDesk cloned successfully"
         } else {
           Write-Host "Cargo.toml found, using existing files"
         }
