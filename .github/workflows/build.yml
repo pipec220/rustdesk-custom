@@ -31,12 +31,22 @@ jobs:
           
           git clone --recursive https://github.com/rustdesk/rustdesk.git $tempDir
           
-          # Копируем всё в текущую папку (кроме .git)
           Copy-Item -Path "$tempDir\*" -Destination . -Recurse -Force
           
           Write-Host "RustDesk cloned successfully"
         } else {
           Write-Host "Cargo.toml found, using existing files"
+        }
+    
+    - name: Disable aom in vcpkg.json
+      shell: pwsh
+      run: |
+        $vcpkgJson = "vcpkg.json"
+        if (Test-Path $vcpkgJson) {
+          (Get-Content $vcpkgJson) -replace '"aom",?\s*', '' | Set-Content $vcpkgJson
+          Write-Host "Removed aom from vcpkg.json"
+        } else {
+          Write-Host "vcpkg.json not found, skipping"
         }
     
     - name: Install Rust
@@ -54,6 +64,8 @@ jobs:
           ~/.cargo/git
           target
         key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+        restore-keys: |
+          ${{ runner.os }}-cargo-
     
     - name: Install LLVM
       run: |
@@ -68,8 +80,7 @@ jobs:
         echo "VCPKG_ROOT=C:\vcpkg" >> $env:GITHUB_ENV
     
     - name: Install vcpkg dependencies
-      run: |
-        C:\vcpkg\vcpkg install
+      run: C:\vcpkg\vcpkg install
     
     - name: Build
       run: cargo build --release
