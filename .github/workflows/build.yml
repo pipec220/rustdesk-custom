@@ -38,15 +38,22 @@ jobs:
           Write-Host "Cargo.toml found, using existing files"
         }
     
-    - name: Create dummy aom overlay port
+    - name: Remove original aom port and setup overlay
       shell: pwsh
       run: |
-        Write-Host "=== Creating dummy aom port ==="
+        Write-Host "🔪 KILLING ORIGINAL AOM PORT 🔪"
         
+        # 1. Удаляем оригинальный порт aom (самое важное!)
+        $originalAomPath = "res/vcpkg/aom"
+        if (Test-Path $originalAomPath) {
+          Remove-Item -Path $originalAomPath -Recurse -Force
+          Write-Host "✅ Removed original aom port from $originalAomPath"
+        }
+        
+        # 2. Создаём наш пустой overlay порт
         $overlayDir = "${{ github.workspace }}/overlay-ports/aom"
         New-Item -ItemType Directory -Path $overlayDir -Force
         
-        # Создаём portfile.cmake для пустого aom
         @"
 vcpkg_from_github(
     OUT_SOURCE_PATH SOURCE_PATH
@@ -55,7 +62,7 @@ vcpkg_from_github(
     SHA512 00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
 )
 
-# Ничего не делаем, просто создаём пустые файлы
+# Создаём пустые файлы
 file(MAKE_DIRECTORY "\${CURRENT_PACKAGES_DIR}/include/aom")
 file(MAKE_DIRECTORY "\${CURRENT_PACKAGES_DIR}/lib")
 file(WRITE "\${CURRENT_PACKAGES_DIR}/lib/aom.lib" "")
@@ -64,17 +71,18 @@ file(WRITE "\${CURRENT_PACKAGES_DIR}/include/aom/aom.h" "// Dummy aom header")
 file(INSTALL "\${SOURCE_PATH}/LICENSE" DESTINATION "\${CURRENT_PACKAGES_DIR}/share/\${PORT}" RENAME copyright)
 "@ | Out-File -FilePath "$overlayDir/portfile.cmake" -Encoding UTF8
         
-        # Создаём vcpkg.json для пустого aom
         @"
 {
   "name": "aom",
   "version": "3.9.1",
-  "description": "Dummy aom port that does nothing"
+  "description": "Dummy aom port"
 }
 "@ | Out-File -FilePath "$overlayDir/vcpkg.json" -Encoding UTF8
         
-        Write-Host "✅ Dummy aom port created at $overlayDir"
+        # 3. Устанавливаем переменные
         echo "VCPKG_OVERLAY_PORTS=${{ github.workspace }}/overlay-ports" >> $env:GITHUB_ENV
+        
+        Write-Host "✅ Overlay port created at $overlayDir"
     
     - name: Install Rust
       uses: actions-rs/toolchain@v1
@@ -108,6 +116,8 @@ file(INSTALL "\${SOURCE_PATH}/LICENSE" DESTINATION "\${CURRENT_PACKAGES_DIR}/sha
     
     - name: Install vcpkg dependencies
       run: C:\vcpkg\vcpkg install
+      env:
+        VCPKG_OVERLAY_PORTS: ${{ env.VCPKG_OVERLAY_PORTS }}
     
     - name: Build
       run: cargo build --release
