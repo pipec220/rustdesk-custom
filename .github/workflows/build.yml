@@ -38,38 +38,43 @@ jobs:
           Write-Host "Cargo.toml found, using existing files"
         }
     
-    - name: Remove and block aom port
+    - name: Create dummy aom overlay port
       shell: pwsh
       run: |
-        Write-Host "=== Removing aom port ==="
+        Write-Host "=== Creating dummy aom port ==="
         
-        $aomPortPath = "res/vcpkg/aom"
-        if (Test-Path $aomPortPath) {
-          Remove-Item -Path $aomPortPath -Recurse -Force
-          Write-Host "✅ Removed $aomPortPath"
-        } else {
-          Write-Host "ℹ️ $aomPortPath not found"
-        }
+        $overlayDir = "${{ github.workspace }}/overlay-ports/aom"
+        New-Item -ItemType Directory -Path $overlayDir -Force
         
-        $altPaths = @("ports/aom", "vcpkg/ports/aom")
-        foreach ($path in $altPaths) {
-          if (Test-Path $path) {
-            Remove-Item -Path $path -Recurse -Force
-            Write-Host "✅ Removed $path"
-          }
-        }
+        # Создаём portfile.cmake для пустого aom
+        @"
+vcpkg_from_github(
+    OUT_SOURCE_PATH SOURCE_PATH
+    REPO webmproject/aom
+    REF v3.9.1
+    SHA512 00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+)
+
+# Ничего не делаем, просто создаём пустые файлы
+file(MAKE_DIRECTORY "\${CURRENT_PACKAGES_DIR}/include/aom")
+file(MAKE_DIRECTORY "\${CURRENT_PACKAGES_DIR}/lib")
+file(WRITE "\${CURRENT_PACKAGES_DIR}/lib/aom.lib" "")
+file(WRITE "\${CURRENT_PACKAGES_DIR}/include/aom/aom.h" "// Dummy aom header")
+
+file(INSTALL "\${SOURCE_PATH}/LICENSE" DESTINATION "\${CURRENT_PACKAGES_DIR}/share/\${PORT}" RENAME copyright)
+"@ | Out-File -FilePath "$overlayDir/portfile.cmake" -Encoding UTF8
         
-        New-Item -ItemType File -Path "res/vcpkg/aom" -Force | Out-Null
-        Write-Host "✅ Created empty file to block aom"
+        # Создаём vcpkg.json для пустого aom
+        @"
+{
+  "name": "aom",
+  "version": "3.9.1",
+  "description": "Dummy aom port that does nothing"
+}
+"@ | Out-File -FilePath "$overlayDir/vcpkg.json" -Encoding UTF8
         
-        $vcpkgJson = "vcpkg.json"
-        if (Test-Path $vcpkgJson) {
-          $content = Get-Content $vcpkgJson -Raw
-          $content = $content -replace '"aom",?\s*', ''
-          $content = $content -replace ',\s*}', '}'
-          $content | Set-Content $vcpkgJson -Encoding UTF8
-          Write-Host "✅ Removed aom from vcpkg.json"
-        }
+        Write-Host "✅ Dummy aom port created at $overlayDir"
+        echo "VCPKG_OVERLAY_PORTS=${{ github.workspace }}/overlay-ports" >> $env:GITHUB_ENV
     
     - name: Install Rust
       uses: actions-rs/toolchain@v1
