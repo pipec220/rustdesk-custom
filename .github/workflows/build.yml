@@ -38,48 +38,23 @@ jobs:
           Write-Host "Cargo.toml found, using existing files"
         }
     
-    - name: Create overlay ports to disable aom
+    - name: Remove aom from local vcpkg ports
       shell: pwsh
       run: |
-        Write-Host "Creating overlay ports directory..."
-        New-Item -ItemType Directory -Path "${{ github.workspace }}/custom-ports/aom" -Force
+        $aomPortPath = "res/vcpkg/aom"
+        if (Test-Path $aomPortPath) {
+          Write-Host "Removing aom port from $aomPortPath"
+          Remove-Item -Path $aomPortPath -Recurse -Force
+          Write-Host "✅ aom port removed"
+        } else {
+          Write-Host "aom port not found at $aomPortPath"
+        }
         
-        Write-Host "Creating empty aom portfile.cmake..."
-        @"
-vcpkg_from_github(
-    OUT_SOURCE_PATH SOURCE_PATH
-    REPO webmproject/aom
-    REF v3.9.1
-    SHA512 00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-)
-
-vcpkg_cmake_configure(
-    SOURCE_PATH "\${SOURCE_PATH}"
-    OPTIONS
-        -DBUILD_SHARED_LIBS=OFF
-)
-
-vcpkg_cmake_install()
-
-file(REMOVE_RECURSE "\${CURRENT_PACKAGES_DIR}/debug/include")
-file(REMOVE_RECURSE "\${CURRENT_PACKAGES_DIR}/debug/share")
-
-file(INSTALL "\${SOURCE_PATH}/LICENSE" DESTINATION "\${CURRENT_PACKAGES_DIR}/share/\${PORT}" RENAME copyright)
-"@ | Out-File -FilePath "${{ github.workspace }}/custom-ports/aom/portfile.cmake" -Encoding UTF8
-        
-        Write-Host "Creating empty aom vcpkg.json..."
-        @"
-{
-  "name": "aom",
-  "version": "3.9.1",
-  "description": "Empty aom port to disable building",
-  "homepage": "https://aomedia.org/",
-  "license": "BSD-2-Clause"
-}
-"@ | Out-File -FilePath "${{ github.workspace }}/custom-ports/aom/vcpkg.json" -Encoding UTF8
-        
-        Write-Host "Overlay ports created at ${{ github.workspace }}/custom-ports"
-        Get-ChildItem -Path "${{ github.workspace }}/custom-ports" -Recurse
+        $vcpkgJson = "vcpkg.json"
+        if (Test-Path $vcpkgJson) {
+          Write-Host "Removing aom from vcpkg.json"
+          (Get-Content $vcpkgJson) -replace '"aom",?\s*', '' | Set-Content $vcpkgJson
+        }
     
     - name: Install Rust
       uses: actions-rs/toolchain@v1
@@ -110,7 +85,6 @@ file(INSTALL "\${SOURCE_PATH}/LICENSE" DESTINATION "\${CURRENT_PACKAGES_DIR}/sha
         cd C:\vcpkg
         .\bootstrap-vcpkg.bat
         echo "VCPKG_ROOT=C:\vcpkg" >> $env:GITHUB_ENV
-        echo "VCPKG_OVERLAY_PORTS=${{ github.workspace }}/custom-ports" >> $env:GITHUB_ENV
     
     - name: Install vcpkg dependencies
       run: C:\vcpkg\vcpkg install
