@@ -1,0 +1,50 @@
+name: Build Custom RustDesk (Windows)
+
+on:
+  workflow_dispatch:  # ручной запуск
+
+env:
+  RENDEZVOUS_SERVER: "hbbs.ваш-сервер.com:21116"   # ⚠️ ЗАМЕНИТЕ
+  PUBLIC_KEY: "ваш-ключ-из-id_ed25519.pub"          # ⚠️ ЗАМЕНИТЕ
+
+jobs:
+  build-windows:
+    runs-on: windows-2022
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      
+      - name: Setup Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          target: x86_64-pc-windows-msvc
+      
+      - name: Setup vcpkg
+        run: |
+          git clone https://github.com/Microsoft/vcpkg.git
+          cd vcpkg
+          .\bootstrap-vcpkg.bat
+          .\vcpkg install libvpx:x64-windows-static libyuv:x64-windows-static opus:x64-windows-static aom:x64-windows-static
+        shell: cmd
+      
+      - name: Patch config with your server
+        run: |
+          $configFile = "libs/hbb_common/src/config.rs"
+          (Get-Content $configFile) -replace 'pub const RENDEZVOUS_SERVER: &str = ".*";', "pub const RENDEZVOUS_SERVER: &str = `"$env:RENDEZVOUS_SERVER`";" | Set-Content $configFile
+          (Get-Content $configFile) -replace 'pub const RS_PUB_KEY: &str = ".*";', "pub const RS_PUB_KEY: &str = `"$env:PUBLIC_KEY`";" | Set-Content $configFile
+        shell: powershell
+      
+      - name: Build
+        run: cargo build --release
+        env:
+          VCPKG_ROOT: ${{ github.workspace }}\vcpkg
+      
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: rustdesk-windows-custom
+          path: target/release/rustdesk.exe
